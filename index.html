@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Nacht am Berg – Astrofoto-Simulator</title>
+<meta name="theme-color" content="#06080c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nacht am Berg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/three.min.js"></script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="hud2d"></canvas>
+<div id="cross"></div>
+<div id="hoverTag"></div>
+<div id="altTag"></div>
+<canvas id="tape" width="420" height="34"></canvas>
+
+<div id="clock"><span class="t" id="clockT">--:--</span><span class="muted" id="clockTemp"></span>
+ <button data-sp="0" title="Pause">❚❚</button><button data-sp="1" title="Echtzeit">1×</button><button data-sp="10" title="10-fach">10×</button><button data-sp="60" title="60-fach">60×</button><button data-sp="300" title="300-fach">300×</button></div>
+
+<div id="hudBar">
+ <button data-hud="dir" title="Blickrichtung (Kompassband)">🧭</button>
+ <button data-hud="alt" title="Höhe über dem Horizont">∠</button>
+ <button data-hud="cons" title="Sternbildlinien">✶</button>
+ <button data-hud="names" title="Namen heller Sterne und Planeten">Aa</button>
+ <button data-hud="tasks" title="Aufgaben (Tutorial)">☰</button>
+ <button data-hud="hints" title="Hinweise: zeigt, wo es weitergeht">➜</button>
+</div>
+<div id="tasks"></div>
+<div id="toast"></div>
+<div id="tip"></div>
+<div id="dim"></div>
+
+<!-- ================= Fenster ================= -->
+<div class="win" id="w-car"><header><b>Fahrziel</b><span class="x">×</span></header><div class="body" style="width:440px">
+ <div class="ctl"><div class="lab"><span>Ort</span></div><select id="locSel" style="width:100%"></select></div>
+ <div class="row"><div class="ctl" style="flex:1"><div class="lab"><span>Breite</span></div><input id="lat" type="number" step="0.01" style="width:100%"></div>
+  <div class="ctl" style="flex:1"><div class="lab"><span>Länge</span></div><input id="lon" type="number" step="0.01" style="width:100%"></div></div>
+ <div class="ctl"><div class="lab"><span>Himmelsqualität <i class="i" data-t="bortle">i</i></span></div><select id="bortleSel" style="width:100%"></select></div>
+ <div class="ctl"><div class="lab"><span>Datum der Nacht</span></div><input id="nightDate" type="date" style="width:100%"></div>
+ <button class="primary" id="driveBtn" style="width:100%;margin-top:8px">Hinfahren (Ankunft 17:00)</button>
+</div></div>
+
+<div class="win" id="w-trunk"><header><b>Kofferraum – was kommt mit?</b><span class="muted" id="gearLine" style="font-size:12px"></span><span class="x">×</span></header><div class="body">
+ <div class="presets" id="presets"></div>
+ <div class="summary" id="gearSummary"></div><ul class="warnings" id="gearWarn"></ul>
+ <div id="gearCats"></div>
+ <button class="primary" id="packBtn">Auspacken &amp; aufbauen</button> <span class="muted" style="font-size:12px">Preise: grobe Richtwerte</span>
+</div></div>
+
+<div class="win" id="w-compass"><header><b>Kompass</b><span class="x">×</span></header><div class="body" style="width:520px">
+ <div class="row"><canvas id="compCv" class="inst" width="220" height="220"></canvas>
+ <div style="flex:1"><div class="ctl"><div class="lab"><span>Montierung drehen <i class="i" data-t="missweisung">i</i></span><span class="mono" id="headv"></span></div><input type="range" id="head" min="-12" max="12" step="0.1"></div>
+  <label class="muted" style="font-size:12px"><input type="checkbox" id="showTrueN"> geografisch Nord zeigen</label>
+  <div class="stat" id="headStat"></div></div></div>
+</div></div>
+
+<div class="win" id="w-mount"><header><b>Montierung</b><span class="muted" id="mountName" style="font-size:12px"></span><span class="x">×</span></header><div class="body" style="width:min(940px,94vw)">
+ <div id="setupBanner"></div>
+ <div class="mgrid">
+  <div class="box"><h3>Libelle <i class="i" data-t="nivellieren">i</i></h3><div class="row"><canvas id="levelCv" class="inst" width="150" height="150"></canvas><div style="flex:1">
+   <div class="ctl"><div class="lab"><span>Bein Nord</span><span class="mono" id="legNv"></span></div><input type="range" id="legN" min="-4" max="4" step="0.05"></div>
+   <div class="ctl"><div class="lab"><span>Bein Ost</span><span class="mono" id="legEv"></span></div><input type="range" id="legE" min="-4" max="4" step="0.05"></div>
+   <div class="stat" id="levelStat"></div></div></div></div>
+  <div class="box eqOnly"><h3>Polhöhe <i class="i" data-t="polhoehe">i</i></h3><div class="row"><canvas id="altCv" class="inst" width="150" height="150"></canvas><div style="flex:1">
+   <div class="ctl"><div class="lab"><span>Polhöhenskala</span><span class="mono" id="altSv"></span></div><input type="range" id="altS" min="30" max="65" step="0.5"></div>
+   <div class="stat" id="altStat"></div></div></div></div>
+  <div class="box eqOnly"><h3>Polsucher <i class="i" data-t="polsucher">i</i></h3><div class="row"><canvas id="polCv" class="inst" width="200" height="200"></canvas><div style="flex:1">
+   <div class="ctl"><div class="lab"><span>Azimut-Schrauben</span><span class="mono" id="fAzv"></span></div><div class="pm"><button class="small" data-nudge="fAz,-0.05">«</button><button class="small" data-nudge="fAz,-0.01">‹</button><input type="range" id="fAz" min="-3" max="3" step="0.01"><button class="small" data-nudge="fAz,0.01">›</button><button class="small" data-nudge="fAz,0.05">»</button></div></div>
+   <div class="ctl"><div class="lab"><span>Polhöhen-Schraube</span><span class="mono" id="fAltv"></span></div><div class="pm"><button class="small" data-nudge="fAlt,-0.05">«</button><button class="small" data-nudge="fAlt,-0.01">‹</button><input type="range" id="fAlt" min="-3" max="3" step="0.01"><button class="small" data-nudge="fAlt,0.01">›</button><button class="small" data-nudge="fAlt,0.05">»</button></div></div>
+   <label class="muted" style="font-size:12px"><input type="checkbox" id="polHelp"> Zielmarke (wie Polsucher-App)</label>
+   <div class="muted" id="polText" style="font-size:12px;margin-top:4px"></div></div></div></div>
+  <div class="box"><h3 id="circTitle">Teilkreise &amp; Motor <i class="i" data-t="teilkreise">i</i></h3>
+   <div id="circRead" class="mono" style="font-size:13px"></div>
+   <div class="row" style="margin-top:8px;align-items:flex-end" id="circSet">
+    <div><div class="muted" style="font-size:11px" id="c1lab">RA (h)</div><input id="cRAh" type="number" min="0" max="23" style="width:56px"> <input id="cRAm" type="number" min="0" max="59" style="width:56px"></div>
+    <div><div class="muted" style="font-size:11px" id="c2lab">Dec (°)</div><input id="cDec" type="number" min="-90" max="90" step="0.5" style="width:70px"></div>
+    <button id="circGo">Drehen</button></div>
+   <div style="margin-top:10px"><label><input type="checkbox" id="trackCb"> Nachführmotor an</label> <i class="i" data-t="erdrotation">i</i></div>
+  </div>
+ </div>
+ <div style="margin-top:10px;font-size:13px"><span id="paResult"></span> <span class="muted" id="paDetail" style="font-size:12px"></span> <button class="small" id="reSetup" style="float:right">Neu aufstellen</button></div>
+ <input type="hidden" id="head2">
+</div></div>
+
+<div class="win" id="w-scope"><header><b>Teleskop</b><span class="muted" id="scopeName" style="font-size:12px"></span><span class="x">×</span></header><div class="body"><div class="row">
+ <div><div class="seg" id="scopeMode" style="margin-bottom:8px"><button data-m="finder" class="on">Sucher 8×50</button><button data-m="eye">Okular</button></div>
+  <canvas id="eyeCv" width="500" height="500"></canvas>
+  <div class="muted" style="font-size:12px;margin-top:6px">Ziehen = Teleskop schwenken (Klemmen gelöst)</div></div>
+ <div style="width:270px">
+  <div class="box"><h3>Okular <i class="i" data-t="okular">i</i></h3><select id="epSel" style="width:100%"></select><div class="mono muted" id="magv" style="font-size:12px;margin-top:4px"></div></div>
+  <div class="box" style="margin-top:10px"><h3>Fokus <i class="i" data-t="fokus">i</i></h3>
+   <canvas id="focCv" class="inst" width="246" height="120" style="width:100%"></canvas>
+   <div class="ctl"><div class="lab"><span>Fokussierrad</span><span class="mono" id="focv"></span></div><div class="pm"><button class="small" data-fstep="-1">−</button><input type="range" id="foc" min="-400" max="400" step="1"><button class="small" data-fstep="1">+</button></div></div>
+   <label id="bahtLab" style="font-size:12px"><input type="checkbox" id="baht"> Bahtinov-Maske auf</label> <button class="small" id="autofoc">Autofokus</button></div>
+  <div class="box" style="margin-top:10px"><h3>Feinbewegung</h3><div class="pad"><span></span><button data-slew="0,1">▲</button><span></span><button data-slew="-1,0">◀</button><button data-slew="c">·</button><button data-slew="1,0">▶</button><span></span><button data-slew="0,-1">▼</button><span></span></div></div>
+ </div></div></div></div>
+
+<div class="win" id="w-camera"><header><b>Kamera</b><span class="muted" id="camName" style="font-size:12px"></span><span class="x">×</span></header><div class="body" style="width:min(1060px,96vw)">
+ <div id="camNone" class="muted" style="display:none;padding:20px">Keine Kamera eingepackt. Hol eine aus dem Kofferraum.</div>
+ <div class="camBody" id="camBody">
+  <div><canvas id="shotCanvas" width="760" height="507"></canvas>
+   <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap"><button id="saveBtn" disabled>Auf Laptop speichern</button><span class="muted" id="shotMeta" style="font-size:12px"></span></div>
+   <details><summary>Was ist passiert?</summary><div class="grid2" style="margin-top:6px"><ul class="diag" id="diag"></ul><div><canvas id="histCv" width="400" height="110" style="width:100%" class="inst"></canvas><div class="muted" id="histTxt" style="font-size:12px;margin-top:3px"></div></div></div></details></div>
+  <div>
+   <div class="ctl"><div class="lab"><span>Belichtung <i class="i" data-t="belichtung">i</i></span><span class="mono" id="expv"></span></div><input type="range" id="exp" min="0" max="22" step="1"></div>
+   <div class="ctl"><div class="lab"><span id="isoLab">ISO</span><span class="mono" id="isov"></span></div><input type="range" id="iso" min="0" max="6" step="1"></div>
+   <div class="ctl" id="filtRow"><div class="lab"><span>Filter <i class="i" data-t="schmalband">i</i></span></div><select id="filtSel" style="width:100%"></select></div>
+   <div class="ctl"><div class="lab"><span id="nfrLab">Serie <i class="i" data-t="stacking">i</i></span><span class="mono" id="nv"></span></div><input type="range" id="nfr" min="0" max="8" step="1"></div>
+   <div style="font-size:12px;display:flex;flex-direction:column;gap:3px;margin:8px 0">
+    <label><input type="checkbox" id="cDark"> Darks abziehen <i class="i" data-t="darks">i</i></label>
+    <label><input type="checkbox" id="cFlat"> Flats anwenden <i class="i" data-t="flats">i</i></label>
+    <label><input type="checkbox" id="cStretch" checked> Vorschau strecken <i class="i" data-t="stretching">i</i></label></div>
+   <button class="primary" id="shootBtn" style="width:100%;padding:12px;border-radius:50px">● Auslösen</button>
+  </div>
+ </div>
+</div></div>
+
+<div class="win" id="w-laptop"><header><b style="color:#9aa3b2">Laptop</b><span class="x">×</span></header>
+ <div id="lapScreen">
+  <div id="lapTabs"><button data-lt="chart" class="on">SkyChart</button><button data-lt="targets">Ziele</button><button data-lt="proc">Bearbeitung</button><button data-lt="photos">Fotos</button><button data-lt="lex">Lexikon</button></div>
+  <div class="lapPage on" id="lp-chart">
+   <div id="skyWrap"><canvas id="sky"></canvas>
+    <div class="ov" id="skyTools">
+     <div class="seg" id="viewMode"><button data-v="in" class="on">Vom Boden</button><button data-v="out">Kuppel von außen</button></div>
+     <div class="r">
+      <label><input type="checkbox" data-l="altaz" checked>Horizont-Netz</label><label><input type="checkbox" data-l="eq">Himmels-Netz</label>
+      <label><input type="checkbox" data-l="cons" checked>Sternbilder</label><label><input type="checkbox" data-l="names" checked>Namen</label>
+      <label><input type="checkbox" data-l="messier" checked>Deep-Sky</label><label><input type="checkbox" data-l="mw" checked>Milchstraße</label><label><input type="checkbox" data-l="fov" checked>Teleskop</label></div>
+     <div class="r"><button class="small" data-look="0">N</button><button class="small" data-look="90">O</button><button class="small" data-look="180">S</button><button class="small" data-look="270">W</button><button class="small" data-look="zen">Zenit</button><button class="small" data-look="tgt">Teleskop</button></div>
+    </div>
+    <div id="search"><input type="text" id="searchQ" placeholder="Suchen: M31, Vega, Saturn …"><div id="searchRes"></div></div>
+    <div class="ov" id="skyStatus"></div></div>
+   <div id="info"></div>
+  </div>
+  <div class="lapPage" id="lp-targets" style="flex-direction:column;overflow:auto;padding:14px"><div id="tgtTable"></div></div>
+  <div class="lapPage" id="lp-proc" style="overflow:hidden"><div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;background:#05070b"><canvas id="procCv" width="380" height="250" style="max-width:100%;max-height:calc(100% - 30px);image-rendering:auto;border-radius:4px"></canvas><div class="muted mono" id="procInfo" style="font-size:12px;margin-top:6px"></div></div><div id="procSide" style="width:300px;flex-shrink:0;border-left:1px solid var(--line);padding:12px 14px;overflow:auto;background:#0d1119;font-size:13px"></div></div>
+  <div class="lapPage" id="lp-photos" style="flex-direction:column;overflow:auto;padding:14px"><div id="galCompare"></div><div class="gal" id="galGrid"></div></div>
+  <div class="lapPage" id="lp-lex" style="flex-direction:column;overflow:auto;padding:14px"><input type="text" id="lexQ" placeholder="Begriff suchen…" style="max-width:340px;margin-bottom:12px"><div class="lexList" id="lexList"></div></div>
+ </div>
+</div>
+
+<div id="welcome"><div class="card">
+ <h1>Nacht am Berg</h1>
+ <p id="welTxt">Du parkst auf dem Großen Feldberg. Es ist 17:00 Uhr, die Sonne ist gerade untergegangen.</p>
+ <p style="font-size:13px">Maus ziehen = umsehen · Rad = zoomen · Klick auf Gegenstände = benutzen</p>
+ <div class="btns"><button class="primary" id="startGuided">Geführte Nacht</button><button id="startFree">Freie Nacht</button></div>
+</div></div>
+
+<script src="js/catalog.js"></script>
+<script src="js/core/astro.js"></script>
+<script src="js/core/gear.js"></script>
+<script src="js/core/targets.js"></script>
+<script src="js/core/nebula.js"></script>
+<script src="js/core/imaging.js"></script>
+<script src="js/ui/chart.js"></script>
+<script src="js/ui/lexikon.js"></script>
+<script src="js/ui/gearpanel.js"></script>
+<script src="js/ui/setup.js"></script>
+<script src="js/ui/gallery.js"></script>
+<script src="js/app/state.js"></script>
+<script src="js/scene/world.js"></script>
+<script src="js/scene/rig.js"></script>
+<script src="js/app/input.js"></script>
+<script src="js/app/windows.js"></script>
+<script src="js/ui/scope.js"></script>
+<script src="js/ui/camera.js"></script>
+<script src="js/ui/processing.js"></script>
+<script src="js/ui/targetlist.js"></script>
+<script src="js/ui/knobs.js"></script>
+<script src="js/app/hud.js"></script>
+<script src="js/app/tutorial.js"></script>
+<script src="js/app/main.js"></script>
+</body>
+</html>
